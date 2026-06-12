@@ -1,3 +1,4 @@
+import os
 import re
 import random
 import logging
@@ -84,6 +85,24 @@ class AssistantFnc(llm.FunctionContext):
         return datetime.now().strftime("%H:%M:%S")
 
 
+def build_tts():
+    """Select the TTS engine via the TTS_PROVIDER env var.
+
+    TTS_PROVIDER=elevenlabs (default) -> ElevenLabs
+    TTS_PROVIDER=60db                 -> 60dB (local `sixtydb` plugin)
+    """
+    provider = os.getenv("TTS_PROVIDER", "elevenlabs").strip().lower()
+    if provider in ("60db", "sixtydb", "60"):
+        # imported lazily so ElevenLabs-only setups don't need 60dB configured
+        import sixtydb
+
+        logger.info("using 60dB TTS")
+        return sixtydb.TTS()
+
+    logger.info("using ElevenLabs TTS")
+    return elevenlabs.TTS()
+
+
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
@@ -120,7 +139,7 @@ async def entrypoint(ctx: JobContext):
         vad=ctx.proc.userdata["vad"],
         stt=deepgram.STT(model=dg_model),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=elevenlabs.TTS(),
+        tts=build_tts(),
         turn_detector=turn_detector.EOUModel(),
         # minimum delay for endpointing, used when turn detector believes the user is done with their turn
         min_endpointing_delay=0.5,
